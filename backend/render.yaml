@@ -1,0 +1,14 @@
+# Render configuration for Mirror AI Backend
+# This file helps Render understand how to deploy the FastAPI application
+
+# Build command (will be set in Render dashboard)
+# pip install -r requirements.txt
+
+# Start command (will be set in Render dashboard)  
+# gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+
+# Environment variables needed in Render dashboard:
+# SUPABASE_URL=https://gujocpadyrtyixmdbtdr.supabase.co
+# SUPABASE_ANON_KEY=your_supabase_anon_key_here
+# HF_TOKEN=your_huggingface_token_here
+# PYTHON_ENV=production
