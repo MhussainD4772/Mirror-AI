@@ -1,8 +1,7 @@
-import requests
-import json
 import logging
-from typing import List, Dict, Any
-import os
+from typing import List, Dict, Any, Optional
+
+from .hf_summary_client import generate_summary as hf_generate_summary
 
 class ReflectionAI:
     """
@@ -11,14 +10,14 @@ class ReflectionAI:
     
     def __init__(self):
         self.model_name = "mistralai/Mistral-7B-Instruct"
-        self.api_url = f"https://api-inference.huggingface.co/models/{self.model_name}"
-        self.hf_token = os.getenv("HF_TOKEN", "")
-        self.headers = {
-            "Authorization": f"Bearer {self.hf_token}",
-            "Content-Type": "application/json"
-        }
+        self.timeout_seconds = 30
     
-    async def generate_summary(self, text: str, sentiment: str) -> str:
+    async def generate_summary(
+        self,
+        text: str,
+        dominant_emotion: str,
+        top_emotions: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
         """
         Generate an empathetic summary of the user's reflection using Mistral-7B-Instruct
         
@@ -30,54 +29,40 @@ class ReflectionAI:
         """
         try:
             logging.info(f"Generating summary for: {text[:50]}...")
-            prompt = self._create_prompt(text, sentiment)
+            prompt = self._create_prompt(text, dominant_emotion, top_emotions)
             logging.info(f"Using prompt: {prompt[:100]}...")
             
-            payload = {
-                "inputs": prompt,
-                "parameters": {
-                    "max_new_tokens": 150,
-                    "temperature": 0.7,
-                    "do_sample": True,
-                    "return_full_text": False
-                }
-            }
-            
-            response = requests.post(
-                self.api_url,
-                headers=self.headers,
-                json=payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                logging.info(f"Mistral API response: {result}")
-                
-                if isinstance(result, list) and len(result) > 0:
-                    summary = result[0].get("generated_text", "").strip()
-                    cleaned_summary = self._clean_summary(summary)
-                    logging.info(f"Generated summary: {cleaned_summary[:50]}...")
-                    return cleaned_summary
-                else:
-                    logging.warning("Unexpected Mistral API response format")
-                    return self._fallback_summary(text, sentiment)
-            else:
-                logging.warning(f"Mistral API error: {response.status_code} - {response.text}")
-                return self._fallback_summary(text, sentiment)
-                
+            summary = hf_generate_summary(prompt)
+            cleaned_summary = self._clean_summary(summary or "")
+            logging.info(f"Generated summary: {cleaned_summary[:50]}...")
+            return cleaned_summary
         except Exception as e:
-            logging.error(f"Error generating summary: {str(e)}")
-            return self._fallback_summary(text, sentiment)
+            logging.error(f"Mistral API failure: {str(e)}")
+            return self._fallback_summary(text, dominant_emotion)
     
-    def _create_prompt(self, text: str, sentiment: str) -> str:
+    def _create_prompt(
+        self,
+        text: str,
+        dominant_emotion: str,
+        top_emotions: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
         """
         Create a prompt for empathetic reflection summary
         """
+        emotion_line = f"Detected dominant emotion: {dominant_emotion}"
+        if top_emotions:
+            formatted_top = ", ".join(
+                emotion.get("label", "")
+                for emotion in top_emotions[:3]
+                if emotion.get("label")
+            )
+            if formatted_top:
+                emotion_line += f" (also present: {formatted_top})"
+
         return f"""You are a personal reflection AI.
 
 User's reflection: "{text}"
-Detected sentiment: {sentiment}
+{emotion_line}
 
 Summarize the user's entry in 2–3 sentences with empathy.
 End with one actionable suggestion.
@@ -101,17 +86,28 @@ Be warm, understanding, and supportive. Avoid clinical language."""
             
         return summary
     
-    def _fallback_summary(self, text: str, sentiment: str) -> str:
+    def _fallback_summary(self, text: str, dominant_emotion: str) -> str:
         """
         Fallback summary when AI model is unavailable
         """
         logging.info("Using fallback summary generation")
         
-        sentiment_responses = {
-            "positive": "It sounds like you had a good day! You seem to be feeling optimistic about your progress.",
-            "negative": "I can sense you're going through a challenging time. Your feelings are valid and important.",
-            "neutral": "You've shared a thoughtful reflection about your day. There's value in taking time to process your experiences."
+        emotion_responses = {
+            "joy": "It sounds like you had a bright moment that filled you with joy. Celebrate the good energy you're carrying.",
+            "gratitude": "You're noticing what matters to you, and that gratitude is powerful for your growth.",
+            "love": "You're connecting deeply with what you care about, and that warmth can keep guiding you.",
+            "pride": "You’re recognizing your own progress, and that pride is well-deserved.",
+            "optimism": "You're holding an encouraging outlook, and that optimism can help shape tomorrow.",
+            "relief": "You're feeling a sense of relief, which shows how much you've been carrying.",
+            "anger": "You're feeling some frustration, and it's important to acknowledge that tension.",
+            "sadness": "You're moving through a tender moment. It's okay to feel vulnerable.",
+            "fear": "There's anxiety in what you're experiencing, and that worry deserves compassion.",
+            "grief": "You're holding a heavy loss, and it's valid to sit with that grief.",
+            "confusion": "Things feel uncertain right now, and it makes sense that you're searching for clarity.",
+            "neutral": "You've shared a thoughtful reflection about your day. There's value in taking time to process your experiences.",
         }
         
-        base_response = sentiment_responses.get(sentiment.lower(), sentiment_responses["neutral"])
+        base_response = emotion_responses.get(
+            dominant_emotion.lower(), emotion_responses["neutral"]
+        )
         return f"{base_response} Consider what small step you might take tomorrow to continue growing."

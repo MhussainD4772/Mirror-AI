@@ -11,8 +11,12 @@ load_dotenv('../.env')
 
 class SupabaseClient:
     """
-    Client for handling all Supabase database operations
-    Table structure: entries (id, text, ai_summary, sentiment, tags, created_at)
+    Client for handling all Supabase database operations.
+    Table structure now includes emotions data:
+    entries (
+        id, user_id, text, ai_summary, sentiment, dominant_emotion,
+        emotions, tags, created_at
+    )
     """
     
     def __init__(self):
@@ -28,14 +32,18 @@ class SupabaseClient:
     async def save_reflection(self, entry_data: Dict[str, Any]) -> str:
         """
         Insert record into Supabase table `entries`
-        Columns: id (uuid), text (text), ai_summary (text), sentiment (varchar), tags (text[]), created_at (timestamp)
+        Columns include: text, ai_summary, sentiment (legacy), dominant_emotion,
+        emotions (jsonb), tags, created_at
         """
         try:
             # Prepare data for Supabase with correct column names
             data = {
+                "user_id": entry_data.get("user_id"),
                 "text": entry_data["text"],
                 "ai_summary": entry_data["ai_summary"],
                 "sentiment": entry_data["sentiment"],
+                "dominant_emotion": entry_data.get("dominant_emotion"),
+                "emotions": entry_data.get("emotions"),
                 "tags": entry_data["tags"],
                 "created_at": entry_data["created_at"]
             }
@@ -69,7 +77,7 @@ class SupabaseClient:
                 .execute()
             )
             
-            entries = result.data or []
+            entries = self._normalize_entries(result.data or [])
             logging.info(f"Retrieved {len(entries)} entries from Supabase")
             return entries
             
@@ -85,7 +93,8 @@ class SupabaseClient:
             result = self.client.table("entries").select("*").eq("id", entry_id).execute()
             
             if result.data:
-                return result.data[0]
+                entries = self._normalize_entries(result.data)
+                return entries[0] if entries else None
             return None
             
         except Exception as e:
@@ -115,7 +124,7 @@ class SupabaseClient:
                 .execute()
             )
             
-            return result.data or []
+            return self._normalize_entries(result.data or [])
             
         except Exception as e:
             logging.error(f"Error fetching user entries: {str(e)}")
@@ -134,7 +143,7 @@ class SupabaseClient:
                 .execute()
             )
             
-            entries = result.data or []
+            entries = self._normalize_entries(result.data or [])
             
             if not entries:
                 return {
@@ -153,8 +162,8 @@ class SupabaseClient:
             all_tags = []
             
             for entry in entries:
-                sentiment = entry.get("sentiment", "neutral")
-                sentiment_counts[sentiment] = sentiment_counts.get(sentiment, 0) + 1
+                dominant_emotion = entry.get("dominant_emotion") or entry.get("sentiment", "neutral")
+                sentiment_counts[dominant_emotion] = sentiment_counts.get(dominant_emotion, 0) + 1
                 
                 tags = entry.get("tags", [])
                 if isinstance(tags, str):
@@ -212,9 +221,10 @@ class SupabaseClient:
                 created_at = entry.get("created_at", "")
                 if created_at:
                     date_str = created_at.split("T")[0]
+                    dominant_emotion = entry.get("dominant_emotion") or entry.get("sentiment", "neutral")
                     mood_trend.append({
                         "date": date_str,
-                        "sentiment": entry.get("sentiment", "neutral")
+                        "sentiment": dominant_emotion
                     })
                 
                 tags = entry.get("tags", [])
@@ -249,6 +259,59 @@ class SupabaseClient:
             logging.error(f"Error deleting reflection: {str(e)}")
             raise e
     
+    def _normalize_entries(self, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Ensure JSON/text columns are consistently typed when fetched from Supabase.
+        """
+        normalized_entries: List[Dict[str, Any]] = []
+        for entry in entries:
+            normalized_entry = dict(entry)
+
+            tags = normalized_entry.get("tags", [])
+            if isinstance(tags, str):
+                try:
+                    normalized_entry["tags"] = json.loads(tags) if tags else []
+                except json.JSONDecodeError:
+                    normalized_entry["tags"] = [tag.strip() for tag in tags.split(",") if tag.strip()]
+
+            emotions = normalized_entry.get("emotions")
+            if isinstance(emotions, str):
+                try:
+                    normalized_entry["emotions"] = json.loads(emotions) if emotions else {}
+                except json.JSONDecodeError:
+                    normalized_entry["emotions"] = {}
+
+            top_emotions = normalized_entry.get("top_emotions")
+            if isinstance(top_emotions, str):
+                try:
+                    normalized_entry["top_emotions"] = json.loads(top_emotions) if top_emotions else []
+                except json.JSONDecodeError:
+                    normalized_entry["top_emotions"] = []
+            elif top_emotions is None:
+                normalized_entry["top_emotions"] = []
+
+            if normalized_entry.get("emotions"):
+                sorted_emotions = sorted(
+                    normalized_entry["emotions"].items(),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )
+                normalized_entry["top_emotions"] = [
+                    {"label": label, "score": float(score)}
+                    for label, score in sorted_emotions[:3]
+                ]
+
+            if not normalized_entry.get("dominant_emotion"):
+                dominant = None
+                if normalized_entry.get("top_emotions"):
+                    dominant = normalized_entry["top_emotions"][0]["label"]
+                dominant = dominant or normalized_entry.get("sentiment", "neutral")
+                normalized_entry["dominant_emotion"] = dominant
+
+            normalized_entries.append(normalized_entry)
+
+        return normalized_entries
+
     def _calculate_streak(self, entries: List[Dict[str, Any]]) -> int:
         """
         Calculate consecutive days with entries
@@ -283,15 +346,14 @@ class SupabaseClient:
         if not entries:
             return ["Start your reflection journey today!"]
         
-        # Sentiment insights
-        sentiments = [entry.get("sentiment", "neutral") for entry in entries]
-        positive_count = sentiments.count("positive")
-        negative_count = sentiments.count("negative")
-        
-        if positive_count > negative_count:
-            insights.append("You've been feeling more positive lately! 🌟")
-        elif negative_count > positive_count:
-            insights.append("You've been going through some challenges. Remember, this too shall pass. 💪")
+        # Emotion insights
+        emotions = [entry.get("dominant_emotion") or entry.get("sentiment", "neutral") for entry in entries]
+        if emotions:
+            counts: Dict[str, int] = {}
+            for emotion in emotions:
+                counts[emotion] = counts.get(emotion, 0) + 1
+            top_emotion = max(counts.items(), key=lambda item: item[1])
+            insights.append(f"You've been feeling a lot of {top_emotion[0]} lately. Notice what sparks this emotion.")
         
         # Tag insights
         if tag_frequency:

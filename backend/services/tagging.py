@@ -1,9 +1,8 @@
-import requests
-import json
 import logging
-import os
 from typing import List, Dict, Any
 import re
+
+from .hf_tagging_client import classify_tags
 
 class ThemeExtractor:
     """
@@ -12,12 +11,6 @@ class ThemeExtractor:
     
     def __init__(self):
         self.model_name = "facebook/bart-large-mnli"
-        self.api_url = f"https://api-inference.huggingface.co/models/{self.model_name}"
-        self.hf_token = os.getenv("HF_TOKEN", "")
-        self.headers = {
-            "Authorization": f"Bearer {self.hf_token}",
-            "Content-Type": "application/json"
-        }
         
         # Candidate labels as specified in requirements
         self.candidate_labels = [
@@ -61,40 +54,21 @@ class ThemeExtractor:
         try:
             logging.info(f"Using BART classification with labels: {self.candidate_labels}")
             
-            payload = {
-                "inputs": text,
-                "parameters": {
-                    "candidate_labels": self.candidate_labels,
-                    "multi_label": True
-                }
-            }
+            response = classify_tags(text, self.candidate_labels)
             
-            response = requests.post(
-                self.api_url,
-                headers=self.headers,
-                json=payload,
-                timeout=20
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                logging.info(f"BART API response: {result}")
-                
-                if "labels" in result and "scores" in result:
-                    # Filter themes with score > 0.3
-                    themes = []
-                    for label, score in zip(result["labels"], result["scores"]):
-                        if score > 0.3:
-                            themes.append(label)
-                    logging.info(f"BART themes (score > 0.3): {themes}")
-                    return themes
-                else:
-                    logging.warning("Unexpected BART API response format")
-                    return []
-            else:
-                logging.warning(f"BART API error: {response.status_code} - {response.text}")
-                return []
-                
+            logging.info(f"BART API response: {response}")
+
+            if isinstance(response, dict) and "labels" in response and "scores" in response:
+                # Filter themes with score > 0.3
+                themes = []
+                for label, score in zip(response["labels"], response["scores"]):
+                    if score > 0.3:
+                        themes.append(label)
+                logging.info(f"BART themes (score > 0.3): {themes}")
+                return themes
+
+            logging.warning("Unexpected BART API response format: %s", response)
+            return []
         except Exception as e:
             logging.error(f"BART classification error: {str(e)}")
             return []

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import Dict, List, Optional
 from services.reflection_ai import ReflectionAI
-from services.sentiment import SentimentAnalyzer
+from services.emotion import EmotionAnalyzer
 from services.tagging import ThemeExtractor
 from supabase_client import SupabaseClient
 from datetime import datetime
@@ -12,20 +12,62 @@ router = APIRouter()
 
 # Initialize services
 reflection_ai = ReflectionAI()
-sentiment_analyzer = SentimentAnalyzer()
+emotion_analyzer = EmotionAnalyzer()
 theme_extractor = ThemeExtractor()
 supabase_client = SupabaseClient()
+
+EMOTION_POLARITY_MAP = {
+    "admiration": "positive",
+    "amusement": "positive",
+    "approval": "positive",
+    "caring": "positive",
+    "curiosity": "positive",
+    "desire": "positive",
+    "excitement": "positive",
+    "gratitude": "positive",
+    "joy": "positive",
+    "love": "positive",
+    "optimism": "positive",
+    "pride": "positive",
+    "relief": "positive",
+    "surprise": "neutral",
+    "realization": "neutral",
+    "confusion": "neutral",
+    "neutral": "neutral",
+    "anger": "negative",
+    "annoyance": "negative",
+    "disapproval": "negative",
+    "disappointment": "negative",
+    "disgust": "negative",
+    "embarrassment": "negative",
+    "fear": "negative",
+    "grief": "negative",
+    "nervousness": "negative",
+    "remorse": "negative",
+    "sadness": "negative",
+}
+
+
+def map_emotion_to_sentiment(emotion: str) -> str:
+    return EMOTION_POLARITY_MAP.get(emotion.lower(), "neutral")
 
 class ReflectionRequest(BaseModel):
     text: str
     user_id: Optional[str] = "default_user"
 
+class EmotionScore(BaseModel):
+    label: str
+    score: float
+
 class ReflectionResponse(BaseModel):
     summary: str
-    sentiment: str
-    tags: List[str]
+    dominant_emotion: str
+    emotions: Dict[str, float] = Field(default_factory=dict)
+    top_emotions: List[EmotionScore] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
     created_at: str
     entry_id: str
+    sentiment: Optional[str] = None  # Legacy compatibility
 
 @router.post("/reflect", response_model=ReflectionResponse)
 async def process_reflection(request: ReflectionRequest):
@@ -34,11 +76,11 @@ async def process_reflection(request: ReflectionRequest):
     
     Input: {"text": "Got a lot done in Devfolio but skipped gym again."}
     Process:
-    1. Run sentiment → positive | neutral | negative
+    1. Run emotion analysis → 27-emotion probability distribution
     2. Run reflection → short empathetic summary + actionable nudge
     3. Run tag extraction → list of themes (coding, gym, discipline)
     4. Insert record into Supabase table `entries`
-    5. Return full JSON
+    5. Return full JSON with emotion spectrum
     """
     try:
         # Validate input
@@ -47,12 +89,21 @@ async def process_reflection(request: ReflectionRequest):
         
         logging.info(f"Processing reflection: {request.text[:50]}...")
         
-        # 1. Sentiment Analysis
-        sentiment = await sentiment_analyzer.analyze(request.text)
-        logging.info(f"Sentiment detected: {sentiment}")
+        # 1. Emotion Analysis
+        emotion_result = await emotion_analyzer.analyze(request.text)
+        dominant_emotion = emotion_result.get("dominant_emotion", "neutral")
+        emotions = emotion_result.get("emotions", {})
+        top_emotions = emotion_result.get("top_emotions", [])
+        logging.info(
+            "Emotion analysis complete. Dominant emotion: %s | Top emotions: %s",
+            dominant_emotion,
+            top_emotions,
+        )
         
         # 2. Generate empathetic summary
-        summary = await reflection_ai.generate_summary(request.text, sentiment)
+        summary = await reflection_ai.generate_summary(
+            request.text, dominant_emotion, top_emotions
+        )
         logging.info(f"Summary generated: {summary[:50]}...")
         
         # 3. Extract themes/tags
@@ -60,11 +111,15 @@ async def process_reflection(request: ReflectionRequest):
         logging.info(f"Tags extracted: {tags}")
         
         # 4. Save to database
+        legacy_sentiment = map_emotion_to_sentiment(dominant_emotion)
+
         entry_data = {
             "user_id": request.user_id,
             "text": request.text,
             "ai_summary": summary,
-            "sentiment": sentiment,
+            "sentiment": legacy_sentiment,
+            "dominant_emotion": dominant_emotion,
+            "emotions": emotions,
             "tags": tags,
             "created_at": datetime.utcnow().isoformat()
         }
@@ -74,10 +129,13 @@ async def process_reflection(request: ReflectionRequest):
         
         return ReflectionResponse(
             summary=summary,
-            sentiment=sentiment,
+            dominant_emotion=dominant_emotion,
+            emotions=emotions,
+            top_emotions=[EmotionScore(**emotion) for emotion in top_emotions],
             tags=tags,
             created_at=entry_data["created_at"],
-            entry_id=entry_id
+            entry_id=entry_id,
+            sentiment=legacy_sentiment  # Legacy compatibility for frontend
         )
         
     except Exception as e:
