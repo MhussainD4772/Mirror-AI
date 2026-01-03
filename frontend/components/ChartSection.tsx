@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -11,10 +11,13 @@ import {
   Title,
   Tooltip,
   Legend,
-} from 'chart.js';
-import { Line, Bar, Radar } from 'react-chartjs-2';
-import { Reflection } from '../types/reflection';
-import { deriveLegacySentiment, formatEmotionLabel } from '../utils/emotionUtils';
+} from "chart.js";
+import { Line, Bar, Radar } from "react-chartjs-2";
+import { Reflection } from "../types/reflection";
+import {
+  deriveLegacySentiment,
+  formatEmotionLabel,
+} from "../utils/emotionUtils";
 
 ChartJS.register(
   CategoryScale,
@@ -46,13 +49,17 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
 
     // Sort entries by date
     const sortedEntries = [...entries].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
 
     // Sentiment over time data
     const sentimentLabels = sortedEntries.map((entry) => {
       const date = new Date(entry.created_at);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
     });
 
     const sentimentValues = sortedEntries.map((entry) => {
@@ -60,8 +67,8 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
         entry.dominant_emotion,
         entry.sentiment
       );
-      if (polarity === 'positive') return 1;
-      if (polarity === 'negative') return -1;
+      if (polarity === "positive") return 1;
+      if (polarity === "negative") return -1;
       return 0;
     });
 
@@ -93,23 +100,22 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
     const emotionSpectrum =
       emotionEntryCount > 0
         ? (() => {
-            const averages = Object.entries(emotionTotals).map(([label, total]) => [
-              label,
-              total / emotionEntryCount,
-            ]);
+            const averages = Object.entries(emotionTotals).map(
+              ([label, total]) => [label, total / emotionEntryCount]
+            ) as [string, number][];
             const topEmotions = averages
-              .sort(([, a], [, b]) => b - a)
+              .sort(([, a], [, b]) => (b as number) - (a as number))
               .slice(0, 5);
             return {
               labels: topEmotions.map(([label]) => formatEmotionLabel(label)),
               datasets: [
                 {
-                  label: 'Average intensity',
+                  label: "Average intensity",
                   data: topEmotions.map(([, avg]) => Number(avg.toFixed(4))),
-                  backgroundColor: 'rgba(129, 140, 248, 0.2)',
-                  borderColor: 'rgba(99, 102, 241, 0.8)',
+                  backgroundColor: "rgba(129, 140, 248, 0.2)",
+                  borderColor: "rgba(99, 102, 241, 0.8)",
                   borderWidth: 2,
-                  pointBackgroundColor: 'rgba(99, 102, 241, 1)',
+                  pointBackgroundColor: "rgba(99, 102, 241, 1)",
                 },
               ],
             };
@@ -121,14 +127,14 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
         labels: sentimentLabels,
         datasets: [
           {
-            label: 'Mood Trend',
+            label: "Mood Trend",
             data: sentimentValues,
-            borderColor: 'rgb(59, 130, 246)',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderColor: "rgb(59, 130, 246)",
+            backgroundColor: "rgba(59, 130, 246, 0.1)",
             borderWidth: 2,
             tension: 0.4,
-            pointBackgroundColor: 'rgb(59, 130, 246)',
-            pointBorderColor: 'rgb(59, 130, 246)',
+            pointBackgroundColor: "rgb(59, 130, 246)",
+            pointBorderColor: "rgb(59, 130, 246)",
             pointRadius: 4,
           },
         ],
@@ -137,10 +143,10 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
         labels: sortedTags.map(([tag]) => tag),
         datasets: [
           {
-            label: 'Frequency',
+            label: "Frequency",
             data: sortedTags.map(([, count]) => count),
-            backgroundColor: 'rgba(59, 130, 246, 0.6)',
-            borderColor: 'rgb(59, 130, 246)',
+            backgroundColor: "rgba(59, 130, 246, 0.6)",
+            borderColor: "rgb(59, 130, 246)",
             borderWidth: 1,
           },
         ],
@@ -157,25 +163,25 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
     plugins: {
       legend: {
         labels: {
-          color: '#e2e8f0',
+          color: "#e2e8f0",
         },
       },
     },
     scales: {
       x: {
         ticks: {
-          color: '#94a3b8',
+          color: "#94a3b8",
         },
         grid: {
-          color: '#334155',
+          color: "#334155",
         },
       },
       y: {
         ticks: {
-          color: '#94a3b8',
+          color: "#94a3b8",
         },
         grid: {
-          color: '#334155',
+          color: "#334155",
         },
       },
     },
@@ -194,13 +200,13 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
           callback: function (value: any) {
             switch (value) {
               case 1:
-                return 'Positive';
+                return "Positive";
               case 0:
-                return 'Neutral';
+                return "Neutral";
               case -1:
-                return 'Negative';
+                return "Negative";
               default:
-                return '';
+                return "";
             }
           },
         },
@@ -214,20 +220,20 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
     plugins: {
       legend: {
         labels: {
-          color: '#e2e8f0',
+          color: "#e2e8f0",
         },
       },
     },
     scales: {
       r: {
         angleLines: {
-          color: '#334155',
+          color: "#334155",
         },
         grid: {
-          color: '#334155',
+          color: "#334155",
         },
         pointLabels: {
-          color: '#cbd5f5',
+          color: "#cbd5f5",
           font: {
             size: 12,
           },
@@ -249,7 +255,9 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
         <h2 className="text-xl font-semibold text-slate-100 mb-4">Insights</h2>
         <div className="text-center text-slate-400 py-8">
           <p>No data available yet.</p>
-          <p className="text-sm mt-2">Add some reflections to see your insights!</p>
+          <p className="text-sm mt-2">
+            Add some reflections to see your insights!
+          </p>
         </div>
       </div>
     );
@@ -259,7 +267,9 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
     <div className="space-y-6">
       {/* Sentiment Trend Chart */}
       <div className="bg-slate-800 rounded-lg p-6 shadow-lg">
-        <h2 className="text-xl font-semibold text-slate-100 mb-4">Mood Trend</h2>
+        <h2 className="text-xl font-semibold text-slate-100 mb-4">
+          Mood Trend
+        </h2>
         <div className="h-64">
           <Line data={sentimentData} options={sentimentChartOptions} />
         </div>
@@ -267,7 +277,9 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
 
       {/* Tag Frequency Chart */}
       <div className="bg-slate-800 rounded-lg p-6 shadow-lg">
-        <h2 className="text-xl font-semibold text-slate-100 mb-4">Top Themes</h2>
+        <h2 className="text-xl font-semibold text-slate-100 mb-4">
+          Top Themes
+        </h2>
         <div className="h-64">
           <Bar data={tagData} options={chartOptions} />
         </div>
