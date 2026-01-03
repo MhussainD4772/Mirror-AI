@@ -6,11 +6,15 @@ import {
   PointElement,
   LineElement,
   BarElement,
+  RadialLinearScale,
+  Filler,
   Title,
   Tooltip,
   Legend,
 } from 'chart.js';
-import { Line, Bar } from 'react-chartjs-2';
+import { Line, Bar, Radar } from 'react-chartjs-2';
+import { Reflection } from '../types/reflection';
+import { deriveLegacySentiment, formatEmotionLabel } from '../utils/emotionUtils';
 
 ChartJS.register(
   CategoryScale,
@@ -18,20 +22,15 @@ ChartJS.register(
   PointElement,
   LineElement,
   BarElement,
+  RadialLinearScale,
+  Filler,
   Title,
   Tooltip,
   Legend
 );
 
 interface ChartSectionProps {
-  entries: Array<{
-    id: string;
-    text: string;
-    ai_summary: string;
-    sentiment: string;
-    tags: string[];
-    created_at: string;
-  }>;
+  entries: Reflection[];
 }
 
 const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
@@ -41,6 +40,7 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
       return {
         sentimentData: { labels: [], datasets: [] },
         tagData: { labels: [], datasets: [] },
+        emotionSpectrum: { labels: [], datasets: [] },
       };
     }
 
@@ -56,16 +56,13 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
     });
 
     const sentimentValues = sortedEntries.map((entry) => {
-      switch (entry.sentiment.toLowerCase()) {
-        case 'positive':
-          return 1;
-        case 'negative':
-          return -1;
-        case 'neutral':
-          return 0;
-        default:
-          return 0;
-      }
+      const polarity = deriveLegacySentiment(
+        entry.dominant_emotion,
+        entry.sentiment
+      );
+      if (polarity === 'positive') return 1;
+      if (polarity === 'negative') return -1;
+      return 0;
     });
 
     // Tag frequency data
@@ -79,6 +76,45 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
     const sortedTags = Object.entries(tagCounts)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 8); // Top 8 tags
+
+    // Emotion spectrum (averaged probabilities)
+    const emotionTotals: Record<string, number> = {};
+    let emotionEntryCount = 0;
+
+    entries.forEach((entry) => {
+      if (entry.emotions && Object.keys(entry.emotions).length > 0) {
+        emotionEntryCount += 1;
+        Object.entries(entry.emotions).forEach(([label, score]) => {
+          emotionTotals[label] = (emotionTotals[label] || 0) + score;
+        });
+      }
+    });
+
+    const emotionSpectrum =
+      emotionEntryCount > 0
+        ? (() => {
+            const averages = Object.entries(emotionTotals).map(([label, total]) => [
+              label,
+              total / emotionEntryCount,
+            ]);
+            const topEmotions = averages
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 5);
+            return {
+              labels: topEmotions.map(([label]) => formatEmotionLabel(label)),
+              datasets: [
+                {
+                  label: 'Average intensity',
+                  data: topEmotions.map(([, avg]) => Number(avg.toFixed(4))),
+                  backgroundColor: 'rgba(129, 140, 248, 0.2)',
+                  borderColor: 'rgba(99, 102, 241, 0.8)',
+                  borderWidth: 2,
+                  pointBackgroundColor: 'rgba(99, 102, 241, 1)',
+                },
+              ],
+            };
+          })()
+        : { labels: [], datasets: [] };
 
     return {
       sentimentData: {
@@ -109,10 +145,11 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
           },
         ],
       },
+      emotionSpectrum,
     };
   };
 
-  const { sentimentData, tagData } = processChartData();
+  const { sentimentData, tagData, emotionSpectrum } = processChartData();
 
   const chartOptions = {
     responsive: true,
@@ -171,6 +208,41 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
     },
   };
 
+  const emotionSpectrumOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: {
+          color: '#e2e8f0',
+        },
+      },
+    },
+    scales: {
+      r: {
+        angleLines: {
+          color: '#334155',
+        },
+        grid: {
+          color: '#334155',
+        },
+        pointLabels: {
+          color: '#cbd5f5',
+          font: {
+            size: 12,
+          },
+        },
+        ticks: {
+          display: false,
+          beginAtZero: true,
+          maxTicksLimit: 5,
+        },
+        max: 1,
+        min: 0,
+      },
+    },
+  };
+
   if (!entries || entries.length === 0) {
     return (
       <div className="bg-slate-800 rounded-lg p-6 shadow-lg">
@@ -200,6 +272,21 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
           <Bar data={tagData} options={chartOptions} />
         </div>
       </div>
+
+      {/* Emotion Spectrum */}
+      {emotionSpectrum.labels.length > 0 && (
+        <div className="bg-slate-800 rounded-lg p-6 shadow-lg">
+          <h2 className="text-xl font-semibold text-slate-100 mb-4">
+            Emotion Spectrum
+          </h2>
+          <p className="text-slate-300 text-sm mb-4">
+            Shows the average intensity of your most common emotions.
+          </p>
+          <div className="h-72">
+            <Radar data={emotionSpectrum} options={emotionSpectrumOptions} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

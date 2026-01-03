@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
 from services.reflection_ai import ReflectionAI
 from services.emotion import EmotionAnalyzer
 from services.tagging import ThemeExtractor
+from services.auth_utils import get_user_id_from_token
 from supabase_client import SupabaseClient
 from datetime import datetime
 import logging
@@ -53,7 +54,6 @@ def map_emotion_to_sentiment(emotion: str) -> str:
 
 class ReflectionRequest(BaseModel):
     text: str
-    user_id: Optional[str] = "default_user"
 
 class EmotionScore(BaseModel):
     label: str
@@ -70,24 +70,33 @@ class ReflectionResponse(BaseModel):
     sentiment: Optional[str] = None  # Legacy compatibility
 
 @router.post("/reflect", response_model=ReflectionResponse)
-async def process_reflection(request: ReflectionRequest):
+async def process_reflection(
+    request: ReflectionRequest,
+    authorization: Optional[str] = Header(None)
+):
     """
     Process a user's reflection text through AI analysis pipeline
     
+    Requires authentication via Authorization header: Bearer <token>
+    
     Input: {"text": "Got a lot done in Devfolio but skipped gym again."}
     Process:
-    1. Run emotion analysis → 27-emotion probability distribution
-    2. Run reflection → short empathetic summary + actionable nudge
-    3. Run tag extraction → list of themes (coding, gym, discipline)
-    4. Insert record into Supabase table `entries`
-    5. Return full JSON with emotion spectrum
+    1. Validate user token and extract user_id
+    2. Run emotion analysis → 27-emotion probability distribution
+    3. Run reflection → short empathetic summary + actionable nudge
+    4. Run tag extraction → list of themes (coding, gym, discipline)
+    5. Insert record into Supabase table `entries` with user_id
+    6. Return full JSON with emotion spectrum
     """
     try:
+        # Get authenticated user_id from token
+        user_id = get_user_id_from_token(authorization)
+        
         # Validate input
         if not request.text.strip():
             raise HTTPException(status_code=400, detail="Reflection text cannot be empty")
         
-        logging.info(f"Processing reflection: {request.text[:50]}...")
+        logging.info(f"Processing reflection for user {user_id}: {request.text[:50]}...")
         
         # 1. Emotion Analysis
         emotion_result = await emotion_analyzer.analyze(request.text)
@@ -114,7 +123,7 @@ async def process_reflection(request: ReflectionRequest):
         legacy_sentiment = map_emotion_to_sentiment(dominant_emotion)
 
         entry_data = {
-            "user_id": request.user_id,
+            "user_id": user_id,
             "text": request.text,
             "ai_summary": summary,
             "sentiment": legacy_sentiment,
@@ -124,7 +133,14 @@ async def process_reflection(request: ReflectionRequest):
             "created_at": datetime.utcnow().isoformat()
         }
         
-        entry_id = await supabase_client.save_reflection(entry_data)
+        # Extract token from authorization header for RLS
+        token = None
+        if authorization:
+            parts = authorization.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+        
+        entry_id = await supabase_client.save_reflection(entry_data, access_token=token)
         logging.info(f"Entry saved with ID: {entry_id}")
         
         return ReflectionResponse(
@@ -143,17 +159,40 @@ async def process_reflection(request: ReflectionRequest):
         raise HTTPException(status_code=500, detail=f"Failed to process reflection: {str(e)}")
 
 @router.get("/entries")
-async def get_entries(limit: int = 30):
+async def get_entries(
+    limit: int = 30,
+    authorization: Optional[str] = Header(None)
+):
     """
-    Fetch recent reflections from Supabase (limit 30).
-    Return JSON list.
+    Fetch recent reflections for the authenticated user from Supabase.
+    
+    Requires authentication via Authorization header: Bearer <token>
+    
+    Args:
+        limit: Maximum number of entries to return (default: 30)
+        authorization: Authorization header with Bearer token
+    
+    Returns:
+        JSON with entries array and count
     """
     try:
-        logging.info(f"Fetching {limit} recent entries")
-        entries = await supabase_client.get_recent_entries(limit)
-        logging.info(f"Retrieved {len(entries)} entries")
+        # Get authenticated user_id from token
+        user_id = get_user_id_from_token(authorization)
+        
+        # Extract token from authorization header for RLS
+        token = None
+        if authorization:
+            parts = authorization.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+        
+        logging.info(f"Fetching {limit} recent entries for user {user_id}")
+        entries = await supabase_client.get_user_entries(user_id=user_id, limit=limit, access_token=token)
+        logging.info(f"Retrieved {len(entries)} entries for user {user_id}")
         return {"entries": entries, "count": len(entries)}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error fetching entries: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch entries: {str(e)}")

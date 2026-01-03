@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 from routes.reflect import router as reflect_router
+from routes.entries import router as entries_router
 import os
 from dotenv import load_dotenv
 import logging
@@ -37,6 +38,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(reflect_router, tags=["reflection"])
+app.include_router(entries_router, tags=["entries"])
 
 @app.get("/")
 async def root():

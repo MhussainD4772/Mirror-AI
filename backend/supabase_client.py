@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from supabase import create_client, Client
 import json
+import httpx
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -29,11 +30,15 @@ class SupabaseClient:
         self.client: Client = create_client(self.url, self.key)
         logging.info("Supabase client initialized successfully")
     
-    async def save_reflection(self, entry_data: Dict[str, Any]) -> str:
+    async def save_reflection(self, entry_data: Dict[str, Any], access_token: Optional[str] = None) -> str:
         """
         Insert record into Supabase table `entries`
         Columns include: text, ai_summary, sentiment (legacy), dominant_emotion,
         emotions (jsonb), tags, created_at
+        
+        Args:
+            entry_data: Dictionary containing entry data
+            access_token: Optional JWT token for user context (required for RLS)
         """
         try:
             # Prepare data for Supabase with correct column names
@@ -48,15 +53,38 @@ class SupabaseClient:
                 "created_at": entry_data["created_at"]
             }
             
-            logging.info(f"Saving to Supabase: {data}")
-            result = self.client.table("entries").insert(data).execute()
-            
-            if result.data:
-                entry_id = str(result.data[0]["id"])
-                logging.info(f"Entry saved successfully with ID: {entry_id}")
-                return entry_id
+            # Use user's token if provided (for RLS to work)
+            if access_token:
+                # Make direct HTTP request with user's token for RLS context
+                # This allows RLS to recognize the user via auth.uid()
+                url = f"{self.url}/rest/v1/entries"
+                headers = {
+                    "apikey": self.key,
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=representation"
+                }
+                logging.info(f"Saving to Supabase with user token: {data}")
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(url, json=data, headers=headers, timeout=30.0)
+                    response.raise_for_status()
+                    result_data = response.json()
+                    if result_data and len(result_data) > 0:
+                        entry_id = str(result_data[0]["id"])
+                        logging.info(f"Entry saved successfully with ID: {entry_id}")
+                        return entry_id
+                    else:
+                        raise Exception("Failed to save reflection - no data returned")
             else:
-                raise Exception("Failed to save reflection - no data returned")
+                logging.info(f"Saving to Supabase: {data}")
+                result = self.client.table("entries").insert(data).execute()
+                
+                if result.data:
+                    entry_id = str(result.data[0]["id"])
+                    logging.info(f"Entry saved successfully with ID: {entry_id}")
+                    return entry_id
+                else:
+                    raise Exception("Failed to save reflection - no data returned")
                 
         except Exception as e:
             logging.error(f"Error saving reflection: {str(e)}")
@@ -105,45 +133,92 @@ class SupabaseClient:
         self, 
         user_id: str, 
         limit: int = 50, 
-        days_back: int = 30
+        days_back: int = 30,
+        access_token: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Get user's reflection entries with optional filtering
+        
+        Args:
+            user_id: User ID to filter entries
+            limit: Maximum number of entries to return
+            days_back: Number of days to look back
+            access_token: Optional JWT token for user context (required for RLS)
         """
         try:
             # Calculate date filter
             start_date = datetime.now() - timedelta(days=days_back)
             
-            result = (
-                self.client.table("entries")
-                .select("*")
-                .eq("user_id", user_id)
-                .gte("created_at", start_date.isoformat())
-                .order("created_at", desc=True)
-                .limit(limit)
-                .execute()
-            )
-            
-            return self._normalize_entries(result.data or [])
+            if access_token:
+                # Use HTTP request with user's token for RLS
+                url = f"{self.url}/rest/v1/entries"
+                params = {
+                    "user_id": f"eq.{user_id}",
+                    "created_at": f"gte.{start_date.isoformat()}",
+                    "order": "created_at.desc",
+                    "limit": str(limit)
+                }
+                headers = {
+                    "apikey": self.key,
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                }
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, params=params, headers=headers, timeout=30.0)
+                    response.raise_for_status()
+                    result_data = response.json()
+                    return self._normalize_entries(result_data or [])
+            else:
+                result = (
+                    self.client.table("entries")
+                    .select("*")
+                    .eq("user_id", user_id)
+                    .gte("created_at", start_date.isoformat())
+                    .order("created_at", desc=True)
+                    .limit(limit)
+                    .execute()
+                )
+                return self._normalize_entries(result.data or [])
             
         except Exception as e:
             logging.error(f"Error fetching user entries: {str(e)}")
             raise e
     
-    async def get_user_stats(self, user_id: str) -> Dict[str, Any]:
+    async def get_user_stats(self, user_id: str, access_token: Optional[str] = None) -> Dict[str, Any]:
         """
         Get aggregated statistics for user's entries
+        
+        Args:
+            user_id: User ID to filter entries
+            access_token: Optional JWT token for user context (required for RLS)
         """
         try:
             # Get all entries for stats calculation
-            result = (
-                self.client.table("entries")
-                .select("*")
-                .eq("user_id", user_id)
-                .execute()
-            )
-            
-            entries = self._normalize_entries(result.data or [])
+            if access_token:
+                # Use HTTP request with user's token for RLS
+                url = f"{self.url}/rest/v1/entries"
+                params = {
+                    "user_id": f"eq.{user_id}",
+                    "select": "*"
+                }
+                headers = {
+                    "apikey": self.key,
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                }
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, params=params, headers=headers, timeout=30.0)
+                    response.raise_for_status()
+                    result_data = response.json()
+                    entries = self._normalize_entries(result_data or [])
+            else:
+                result = (
+                    self.client.table("entries")
+                    .select("*")
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+                entries = self._normalize_entries(result.data or [])
             
             if not entries:
                 return {
@@ -193,25 +268,48 @@ class SupabaseClient:
             logging.error(f"Error calculating user stats: {str(e)}")
             raise e
     
-    async def get_trends(self, user_id: str, period: str = "week") -> Dict[str, Any]:
+    async def get_trends(self, user_id: str, period: str = "week", access_token: Optional[str] = None) -> Dict[str, Any]:
         """
         Get trend analysis for user's reflections
+        
+        Args:
+            user_id: User ID to filter entries
+            period: Time period (week, month, year)
+            access_token: Optional JWT token for user context (required for RLS)
         """
         try:
             # Get entries for the specified period
             days_back = {"week": 7, "month": 30, "year": 365}.get(period, 7)
             start_date = datetime.now() - timedelta(days=days_back)
             
-            result = (
-                self.client.table("entries")
-                .select("*")
-                .eq("user_id", user_id)
-                .gte("created_at", start_date.isoformat())
-                .order("created_at", desc=False)
-                .execute()
-            )
-            
-            entries = result.data or []
+            if access_token:
+                # Use HTTP request with user's token for RLS
+                url = f"{self.url}/rest/v1/entries"
+                params = {
+                    "user_id": f"eq.{user_id}",
+                    "created_at": f"gte.{start_date.isoformat()}",
+                    "order": "created_at.asc",
+                    "select": "*"
+                }
+                headers = {
+                    "apikey": self.key,
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                }
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, params=params, headers=headers, timeout=30.0)
+                    response.raise_for_status()
+                    entries = response.json() or []
+            else:
+                result = (
+                    self.client.table("entries")
+                    .select("*")
+                    .eq("user_id", user_id)
+                    .gte("created_at", start_date.isoformat())
+                    .order("created_at", desc=False)
+                    .execute()
+                )
+                entries = result.data or []
             
             # Process trends
             mood_trend = []
@@ -247,12 +345,18 @@ class SupabaseClient:
             logging.error(f"Error calculating trends: {str(e)}")
             raise e
     
-    async def delete_reflection(self, entry_id: str) -> bool:
+    async def delete_reflection(self, entry_id: str, user_id: str) -> bool:
         """
-        Delete a specific reflection entry
+        Delete a specific reflection entry (only if owned by user)
         """
         try:
-            result = self.client.table("entries").delete().eq("id", entry_id).execute()
+            result = (
+                self.client.table("entries")
+                .delete()
+                .eq("id", entry_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
             return len(result.data) > 0
             
         except Exception as e:

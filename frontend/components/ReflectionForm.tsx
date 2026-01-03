@@ -1,48 +1,50 @@
-import React, { useState } from 'react';
-import api from '../utils/apiClient';
+import React, { useState } from "react";
+import api from "../utils/apiClient";
+import { Reflection } from "../types/reflection";
+import { normalizeReflection } from "../utils/reflectionNormalizer";
 
 interface ReflectionFormProps {
-  onReflectionAdded: (reflection: any) => void;
+  onReflectionAdded: (reflection: Reflection) => void;
 }
 
-const ReflectionForm: React.FC<ReflectionFormProps> = ({ onReflectionAdded }) => {
-  const [text, setText] = useState('');
-  const [mood, setMood] = useState<string>('');
+const ReflectionForm: React.FC<ReflectionFormProps> = ({
+  onReflectionAdded,
+}) => {
+  const [text, setText] = useState("");
+  const [mood, setMood] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string>("");
 
   const moods = [
-    { emoji: '🙂', value: 'positive', label: 'Good' },
-    { emoji: '😐', value: 'neutral', label: 'Okay' },
-    { emoji: '🙁', value: 'negative', label: 'Tough' },
+    { emoji: "🙂", value: "positive", label: "Good" },
+    { emoji: "😐", value: "neutral", label: "Okay" },
+    { emoji: "🙁", value: "negative", label: "Tough" },
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!text.trim()) {
-      setError('Please write something before reflecting');
+      setError("Please write something before reflecting");
       return;
     }
 
     setIsLoading(true);
-    setError('');
+    setError("");
 
     try {
-      const response = await api.post('/reflect', {
+      const response = await api.post("/reflect", {
         text: text.trim(),
-        user_id: 'default_user', // For now, using default user
       });
 
-      const reflection = response.data;
+      const reflection = normalizeReflection(response.data);
       onReflectionAdded(reflection);
-      
+
       // Reset form
-      setText('');
-      setMood('');
-      
+      setText("");
+      setMood("");
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to process reflection');
+      setError(err.response?.data?.detail || "Failed to process reflection");
     } finally {
       setIsLoading(false);
     }
@@ -53,10 +55,13 @@ const ReflectionForm: React.FC<ReflectionFormProps> = ({ onReflectionAdded }) =>
       <h2 className="text-2xl font-semibold text-slate-100 mb-4">
         How are you feeling today?
       </h2>
-      
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="reflection" className="block text-sm font-medium text-slate-300 mb-2">
+          <label
+            htmlFor="reflection"
+            className="block text-sm font-medium text-slate-300 mb-2"
+          >
             Share your thoughts
           </label>
           <textarea
@@ -81,13 +86,15 @@ const ReflectionForm: React.FC<ReflectionFormProps> = ({ onReflectionAdded }) =>
                 onClick={() => setMood(moodOption.value)}
                 className={`flex flex-col items-center p-3 rounded-lg border-2 transition-colors ${
                   mood === moodOption.value
-                    ? 'border-blue-500 bg-blue-500/20'
-                    : 'border-slate-600 bg-slate-700 hover:border-slate-500'
+                    ? "border-blue-500 bg-blue-500/20"
+                    : "border-slate-600 bg-slate-700 hover:border-slate-500"
                 }`}
                 disabled={isLoading}
               >
                 <span className="text-2xl mb-1">{moodOption.emoji}</span>
-                <span className="text-xs text-slate-300">{moodOption.label}</span>
+                <span className="text-xs text-slate-300">
+                  {moodOption.label}
+                </span>
               </button>
             ))}
           </div>

@@ -1,12 +1,18 @@
-import React from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/router';
+import React from "react";
+import Link from "next/link";
+import { useRouter } from "next/router";
+import { useAuth } from "../contexts/AuthContext";
 
 const Navbar: React.FC = () => {
   const router = useRouter();
+  const { user, loading, signOut } = useAuth();
 
   const isActive = (path: string) => {
     return router.pathname === path;
+  };
+
+  const handleLogout = async () => {
+    await signOut();
   };
 
   return (
@@ -24,28 +30,63 @@ const Navbar: React.FC = () => {
             </Link>
           </div>
 
-          <div className="flex items-center space-x-8">
-            <Link
-              href="/"
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                isActive('/')
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-300 hover:text-slate-100 hover:bg-slate-800'
-              }`}
-            >
-              Reflect
-            </Link>
-            <Link
-              href="/dashboard"
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                isActive('/dashboard')
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-300 hover:text-slate-100 hover:bg-slate-800'
-              }`}
-            >
-              Dashboard
-            </Link>
-          </div>
+          {!loading && (
+            <div className="flex items-center space-x-8">
+              {user ? (
+                <>
+                  <Link
+                    href="/"
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isActive("/")
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-300 hover:text-slate-100 hover:bg-slate-800"
+                    }`}
+                  >
+                    Reflect
+                  </Link>
+                  <Link
+                    href="/dashboard"
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isActive("/dashboard")
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-300 hover:text-slate-100 hover:bg-slate-800"
+                    }`}
+                  >
+                    Dashboard
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isActive("/login")
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-300 hover:text-slate-100 hover:bg-slate-800"
+                    }`}
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isActive("/signup")
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-300 hover:text-slate-100 hover:bg-slate-800"
+                    }`}
+                  >
+                    Sign Up
+                  </Link>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </nav>

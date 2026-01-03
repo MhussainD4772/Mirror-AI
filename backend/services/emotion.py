@@ -10,8 +10,8 @@ class EmotionAnalyzer:
     """
 
     def __init__(self) -> None:
-        self.model_name = "bhadresh-savani/bert-base-uncased-emotion"
-        self.timeout_seconds = 15
+        self.model_name = "SamLowe/roberta-base-go_emotions"  # Popular GoEmotions model with 27 emotions + neutral
+        self.timeout_seconds = 30  # Increased for GoEmotions model
         self.max_retries = 3
         self.known_emotions = [
             "admiration",
@@ -54,16 +54,25 @@ class EmotionAnalyzer:
                 "top_emotions": [{"label": str, "score": float}, ...]
             }
         """
+        print(f"[EMOTION] Analyzing emotions via GoEmotions model for text: {text[:50]}...")
         logging.info("Analyzing emotions via GoEmotions model...")
 
         try:
             response = classify_emotions(text)
-            return self._parse_response(response)
+            print(f"[EMOTION] API response: {str(response)[:300]}")
+            logging.info(f"Emotion API response (first 200 chars): {str(response)[:200]}")
+            result = self._parse_response(response)
+            print(f"[EMOTION] Parsed - dominant: {result.get('dominant_emotion')}, top: {result.get('top_emotions')}")
+            logging.info(f"Parsed dominant emotion: {result.get('dominant_emotion')}, top emotions: {result.get('top_emotions')}")
+            return result
         except Exception as exc:  # pragma: no cover - unexpected edge cases
+            print(f"[EMOTION] API FAILED: {exc}")
             logging.error("GoEmotions API failure (router v2): %s", exc)
-
-        logging.warning("Falling back to heuristic emotion analysis.")
-        return self._fallback_analysis(text)
+            print("[EMOTION] Using fallback heuristic analysis")
+            logging.warning("Falling back to heuristic emotion analysis.")
+            fallback_result = self._fallback_analysis(text)
+            print(f"[EMOTION] Fallback result - dominant: {fallback_result.get('dominant_emotion')}, top: {fallback_result.get('top_emotions')}")
+            return fallback_result
 
     def _parse_response(self, response: Any) -> Dict[str, Any]:
         """
@@ -79,13 +88,53 @@ class EmotionAnalyzer:
             return self._fallback_analysis("")
 
         emotion_scores: Dict[str, float] = {}
+        # Map GoEmotions label variations to our standard emotion names
+        label_mapping = {
+            "admiration": "admiration",
+            "amusement": "amusement",
+            "anger": "anger",
+            "annoyance": "annoyance",
+            "approval": "approval",
+            "caring": "caring",
+            "confusion": "confusion",
+            "curiosity": "curiosity",
+            "desire": "desire",
+            "disappointment": "disappointment",
+            "disapproval": "disapproval",
+            "disgust": "disgust",
+            "embarrassment": "embarrassment",
+            "excitement": "excitement",
+            "fear": "fear",
+            "gratitude": "gratitude",
+            "grief": "grief",
+            "joy": "joy",
+            "love": "love",
+            "nervousness": "nervousness",
+            "optimism": "optimism",
+            "pride": "pride",
+            "realization": "realization",
+            "relief": "relief",
+            "remorse": "remorse",
+            "sadness": "sadness",
+            "surprise": "surprise",
+            "neutral": "neutral",
+        }
+        
         for entry in scores:
             label = entry.get("label")
             score = entry.get("score")
             if label is None or score is None:
                 continue
-            normalized_label = label.lower()
-            emotion_scores[normalized_label] = float(score)
+            
+            # Normalize label: lowercase, replace underscores with spaces, strip
+            normalized_label = label.lower().replace("_", " ").strip()
+            
+            # Map to our standard emotion name
+            mapped_label = label_mapping.get(normalized_label, normalized_label)
+            
+            # If we have a score for this emotion, use the max (in case of duplicates)
+            if mapped_label in self.known_emotions:
+                emotion_scores[mapped_label] = max(emotion_scores.get(mapped_label, 0.0), float(score))
 
         # Ensure all known emotions exist in the map
         for emotion in self.known_emotions:
@@ -116,24 +165,41 @@ class EmotionAnalyzer:
         Provide a minimal heuristic-based emotion estimate when the API fails.
         """
         heuristics = {
-            "joy": ["happy", "joy", "grateful", "excited", "proud", "glad"],
-            "sadness": ["sad", "down", "blue", "tear", "alone", "depressed"],
+            "guilt": ["guilty", "guilt", "regret", "remorse", "ashamed", "embarrassment", "embarrassed", "disappointed in myself", "terrible"],
+            "disappointment": ["disappointment", "disappointed", "let down", "failed", "forgot", "forgotten"],
+            "gratitude": ["grateful", "gratitude", "thankful", "appreciate", "understanding"],
+            "pride": ["proud", "pride", "achievement", "successful", "praised"],
+            "sadness": ["sad", "down", "blue", "tear", "alone", "depressed", "breakup"],
+            "anxiety": ["anxious", "anxiety", "worried", "nervous", "stress"],
+            "relief": ["relieved", "relief", "phew", "finally"],
+            "joy": ["happy", "joy", "excited", "glad"],
             "anger": ["angry", "mad", "furious", "annoyed", "irritated"],
-            "fear": ["afraid", "scared", "worried", "anxious", "nervous"],
-            "relief": ["relieved", "phew", "finally", "safe"],
+            "fear": ["afraid", "scared", "worried"],
         }
 
         text_lower = text.lower()
         emotion_scores = {emotion: 0.0 for emotion in self.known_emotions}
-        emotion_scores["neutral"] = 1.0
-
+        
+        # Count keyword matches - prioritize negative emotions if present
         for emotion, keywords in heuristics.items():
-            score = sum(1 for keyword in keywords if keyword in text_lower)
-            if score > 0:
-                emotion_scores[emotion] = float(score)
-                emotion_scores["neutral"] = 0.0
+            matches = sum(1 for keyword in keywords if keyword in text_lower)
+            if matches > 0:
+                # Give higher weight to guilt/disappointment if present
+                weight = 0.5 if emotion in ["guilt", "disappointment", "remorse"] else 0.3
+                emotion_scores[emotion] = float(matches) * weight
+
+        # If no emotions detected, use neutral
+        if sum(emotion_scores.values()) == 0:
+            emotion_scores["neutral"] = 1.0
+        else:
+            # Normalize scores to 0-1 range
+            max_score = max(emotion_scores.values())
+            if max_score > 0:
+                for emotion in emotion_scores:
+                    emotion_scores[emotion] = emotion_scores[emotion] / max_score
 
         dominant_emotion, top_emotions = self._extract_top_emotions(emotion_scores)
+        print(f"[FALLBACK] Detected emotions - dominant: {dominant_emotion}, scores: {dict(list(emotion_scores.items())[:5])}")
         return {
             "emotions": emotion_scores,
             "dominant_emotion": dominant_emotion,

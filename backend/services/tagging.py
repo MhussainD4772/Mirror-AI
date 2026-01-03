@@ -58,9 +58,19 @@ class ThemeExtractor:
             
             logging.info(f"BART API response: {response}")
 
+            themes = []
+            
+            # Handle list of dicts format: [{'label': 'work', 'score': 0.9}, ...]
+            if isinstance(response, list):
+                for item in response:
+                    if isinstance(item, dict) and "label" in item and "score" in item:
+                        if item["score"] > 0.3:
+                            themes.append(item["label"])
+                logging.info(f"BART themes (score > 0.3): {themes}")
+                return themes
+            
+            # Handle dict format: {'labels': [...], 'scores': [...]}
             if isinstance(response, dict) and "labels" in response and "scores" in response:
-                # Filter themes with score > 0.3
-                themes = []
                 for label, score in zip(response["labels"], response["scores"]):
                     if score > 0.3:
                         themes.append(label)

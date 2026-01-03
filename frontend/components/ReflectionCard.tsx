@@ -1,14 +1,15 @@
 import React from 'react';
+import { Reflection } from '../types/reflection';
+import {
+  deriveLegacySentiment,
+  getEmotionColorClasses,
+  getEmotionEmoji,
+  extractTopEmotions,
+  formatEmotionLabel,
+} from '../utils/emotionUtils';
 
 interface ReflectionCardProps {
-  reflection: {
-    id: string;
-    text: string;
-    ai_summary: string;
-    sentiment: string;
-    tags: string[];
-    created_at: string;
-  };
+  reflection: Reflection;
 }
 
 const ReflectionCard: React.FC<ReflectionCardProps> = ({ reflection }) => {
@@ -22,40 +23,30 @@ const ReflectionCard: React.FC<ReflectionCardProps> = ({ reflection }) => {
     });
   };
 
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment.toLowerCase()) {
-      case 'positive':
-        return 'bg-green-500/20 text-green-400 border-green-500/30';
-      case 'negative':
-        return 'bg-red-500/20 text-red-400 border-red-500/30';
-      case 'neutral':
-        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-      default:
-        return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
-    }
-  };
-
-  const getSentimentEmoji = (sentiment: string) => {
-    switch (sentiment.toLowerCase()) {
-      case 'positive':
-        return '🙂';
-      case 'negative':
-        return '🙁';
-      case 'neutral':
-        return '😐';
-      default:
-        return '😐';
-    }
-  };
+  const polarity = deriveLegacySentiment(
+    reflection.dominant_emotion,
+    reflection.sentiment
+  );
+  const dominantLabel = formatEmotionLabel(
+    reflection.dominant_emotion || reflection.sentiment || 'Neutral'
+  );
+  const topEmotions = extractTopEmotions(
+    reflection.emotions,
+    reflection.top_emotions
+  );
 
   return (
     <div className="bg-slate-800 rounded-lg p-6 shadow-lg hover:shadow-xl transition-shadow">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
-          <span className="text-2xl">{getSentimentEmoji(reflection.sentiment)}</span>
+          <span className="text-2xl">{getEmotionEmoji(polarity)}</span>
           <div>
-            <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getSentimentColor(reflection.sentiment)}`}>
-              {reflection.sentiment}
+            <div
+              className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getEmotionColorClasses(
+                polarity
+              )}`}
+            >
+              {dominantLabel}
             </div>
           </div>
         </div>
@@ -78,6 +69,30 @@ const ReflectionCard: React.FC<ReflectionCardProps> = ({ reflection }) => {
             {reflection.ai_summary}
           </p>
         </div>
+
+        {topEmotions.length > 0 && (
+          <div>
+            <h3 className="text-slate-300 text-sm font-medium mb-2">
+              Top emotions
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {topEmotions.map((emotion) => (
+                <div
+                  key={emotion.label}
+                  className="px-3 py-1 rounded-full border border-slate-600 text-sm text-slate-200 bg-slate-700/60"
+                  title={`${formatEmotionLabel(emotion.label)} • ${(emotion.score * 100).toFixed(1)}%`}
+                >
+                  <span className="font-medium text-slate-100">
+                    {formatEmotionLabel(emotion.label)}
+                  </span>
+                  <span className="ml-2 text-slate-300">
+                    {(emotion.score * 100).toFixed(0)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {reflection.tags && reflection.tags.length > 0 && (
           <div>

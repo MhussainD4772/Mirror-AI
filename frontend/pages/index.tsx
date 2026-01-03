@@ -1,21 +1,38 @@
-import React, { useState } from 'react';
-import ReflectionForm from '../components/ReflectionForm';
-import ReflectionCard from '../components/ReflectionCard';
-
-interface Reflection {
-  id: string;
-  text: string;
-  ai_summary: string;
-  sentiment: string;
-  tags: string[];
-  created_at: string;
-}
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import ReflectionForm from "../components/ReflectionForm";
+import ReflectionCard from "../components/ReflectionCard";
+import { Reflection } from "../types/reflection";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Home() {
   const [recentReflections, setRecentReflections] = useState<Reflection[]>([]);
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/login");
+    }
+  }, [user, loading, router]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-slate-300">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null; // Will redirect
+  }
 
   const handleReflectionAdded = (newReflection: Reflection) => {
-    setRecentReflections(prev => [newReflection, ...prev]);
+    setRecentReflections((prev) => [newReflection, ...prev]);
   };
 
   return (
@@ -26,8 +43,8 @@ export default function Home() {
           Welcome to Mirror AI
         </h1>
         <p className="text-xl text-slate-300 max-w-2xl mx-auto">
-          Your personal reflection companion. Share your thoughts, get AI insights, 
-          and track your emotional journey over time.
+          Your personal reflection companion. Share your thoughts, get AI
+          insights, and track your emotional journey over time.
         </p>
       </div>
 
@@ -59,7 +76,8 @@ export default function Home() {
               Ready to reflect?
             </h3>
             <p className="text-slate-300">
-              Start your journey of self-discovery by sharing your first reflection above.
+              Start your journey of self-discovery by sharing your first
+              reflection above.
             </p>
           </div>
         </div>

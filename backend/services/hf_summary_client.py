@@ -1,11 +1,20 @@
 import os
 from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv('../.env')
+
+HF_TOKEN = os.getenv("HF_TOKEN", "")
+
+if not HF_TOKEN:
+    raise ValueError("HF_TOKEN environment variable is required. Please set it in the root .env file")
 
 SUMMARY_MODEL = "mistralai/Mistral-7B-Instruct-v0.2:featherless-ai"
 
 summary_client = OpenAI(
     base_url="https://router.huggingface.co/v1",
-    api_key=os.environ["HF_TOKEN"],
+    api_key=HF_TOKEN,
 )
 
 

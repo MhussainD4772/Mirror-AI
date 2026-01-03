@@ -1,4 +1,5 @@
 import axios from "axios";
+import { supabase } from "./supabase";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000",
@@ -7,10 +8,24 @@ const api = axios.create({
   },
 });
 
-// Add request interceptor for logging
+// Add request interceptor for auth tokens and logging
 api.interceptors.request.use(
-  (config) => {
-    console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
+  async (config) => {
+    // Get current session and add auth token to headers
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        config.headers.Authorization = `Bearer ${session.access_token}`;
+      }
+    } catch (error) {
+      console.error("Failed to get auth session:", error);
+    }
+
+    console.log(
+      `Making ${config.method?.toUpperCase()} request to ${config.url}`
+    );
     return config;
   },
   (error) => {
@@ -25,6 +40,14 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error("API Error:", error.response?.data || error.message);
+
+    // Handle 401 unauthorized - redirect to login
+    if (error.response?.status === 401) {
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    }
+
     return Promise.reject(error);
   }
 );
