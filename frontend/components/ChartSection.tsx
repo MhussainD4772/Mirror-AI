@@ -107,7 +107,7 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
                 [label, total / emotionEntryCount] as [string, number]
             );
             const topEmotions = averages
-              .sort(([, a], [, b]) => b - a)
+              .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
               .slice(0, 5);
             return {
               labels: topEmotions.map(([label]) => formatEmotionLabel(label)),
