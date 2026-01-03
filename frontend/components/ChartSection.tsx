@@ -102,18 +102,16 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
         ? (() => {
             const averages: Array<[string, number]> = Object.entries(
               emotionTotals
-            ).map(
-              ([label, total]: [string, number]) =>
-                [label, Number(total) / Number(emotionEntryCount)] as [
-                  string,
-                  number
-                ]
-            );
+            ).map(([label, total]: [string, number]) => {
+              const avg = Number(total) / Number(emotionEntryCount);
+              return [label, avg] as [string, number];
+            });
             const topEmotions = averages
-              .sort(
-                (a: [string, number], b: [string, number]) =>
-                  Number(b[1]) - Number(a[1])
-              )
+              .sort((a: [string, number], b: [string, number]) => {
+                const aVal: number = a[1];
+                const bVal: number = b[1];
+                return bVal - aVal;
+              })
               .slice(0, 5);
             return {
               labels: topEmotions.map(([label]) => formatEmotionLabel(label)),
