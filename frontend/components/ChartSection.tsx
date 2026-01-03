@@ -81,7 +81,7 @@ const ChartSection: React.FC<ChartSectionProps> = ({ entries }) => {
     });
 
     const sortedTags = Object.entries(tagCounts)
-      .sort(([, a], [, b]) => b - a)
+      .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
       .slice(0, 8); // Top 8 tags
 
     // Emotion spectrum (averaged probabilities)
