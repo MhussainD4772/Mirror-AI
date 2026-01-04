@@ -8,14 +8,8 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/:path*`,
-      },
-    ]
-  },
+  // Removed rewrites - we're using Next.js API routes (pages/api/*) as proxies instead
+  // This is the recommended approach for Vercel deployments
 }
 
 module.exports = nextConfig

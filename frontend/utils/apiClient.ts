@@ -1,8 +1,13 @@
 import axios from "axios";
 import { supabase } from "./supabase";
 
+// Use Next.js API routes as proxy instead of direct backend calls
+// This avoids CORS issues and keeps backend URL server-side only
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000",
+  baseURL:
+    typeof window !== "undefined"
+      ? ""
+      : process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000",
   headers: {
     "Content-Type": "application/json",
   },
@@ -21,6 +26,17 @@ api.interceptors.request.use(
       }
     } catch (error) {
       console.error("Failed to get auth session:", error);
+    }
+
+    // Prepend /api to routes when running in browser (client-side)
+    // This routes through Next.js API routes which proxy to the backend
+    if (
+      typeof window !== "undefined" &&
+      config.url &&
+      !config.url.startsWith("/api/") &&
+      !config.url.startsWith("http")
+    ) {
+      config.url = `/api${config.url}`;
     }
 
     console.log(
