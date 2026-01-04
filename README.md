@@ -11,6 +11,7 @@ Write about your day and get AI-powered insights about your emotions and pattern
 ## What is Mirror AI?
 
 Mirror AI helps you understand yourself better by analyzing your daily reflections with AI. Just write about your day, and get instant insights on:
+
 - Your emotional state (sentiment analysis)
 - Empathetic summaries and suggestions
 - Recurring themes and patterns
@@ -21,7 +22,7 @@ Mirror AI helps you understand yourself better by analyzing your daily reflectio
 ## Features
 
 - 🤖 **AI Analysis** - Sentiment analysis and empathetic summaries
-- 📊 **Dashboard** - Visualize your mood trends and patterns  
+- 📊 **Dashboard** - Visualize your mood trends and patterns
 - 📱 **Mobile-Friendly** - Works on any device
 - 🔒 **Private** - Your data stays secure in Supabase
 
@@ -30,18 +31,21 @@ Mirror AI helps you understand yourself better by analyzing your daily reflectio
 ## Quick Start
 
 ### Prerequisites
+
 - Python 3.11+
 - Node.js 18+
 
 ### Setup
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/MhussainD4772/Mirror-AI.git
    cd Mirror-AI
    ```
 
 2. **Backend setup**
+
    ```bash
    cd backend
    pip install -r requirements.txt
@@ -50,6 +54,7 @@ Mirror AI helps you understand yourself better by analyzing your daily reflectio
    ```
 
 3. **Frontend setup** (new terminal)
+
    ```bash
    cd frontend
    npm install
@@ -101,12 +106,14 @@ mirror-ai/
 ## Deployment
 
 ### Backend (Render)
+
 1. Connect GitHub repo to Render
 2. Set root directory: `backend`
 3. Add environment variables
 4. Deploy
 
 ### Frontend (Vercel)
+
 1. Import repo to Vercel
 2. Set root directory: `frontend`
 3. Add `NEXT_PUBLIC_BACKEND_URL` variable

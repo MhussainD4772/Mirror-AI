@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
+// Try server-side env var first, then fallback to public (for client-side access)
+// This allows the API route to work even if NEXT_PUBLIC_BACKEND_URL isn't set
 const BACKEND_URL =
   process.env.BACKEND_URL ||
   process.env.NEXT_PUBLIC_BACKEND_URL ||
